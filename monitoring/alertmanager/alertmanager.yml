@@ -1,0 +1,28 @@
+# =============================================================================
+# Alertmanager Configuration
+# =============================================================================
+global:
+  resolve_timeout: 5m
+
+route:
+  group_by: ["alertname"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 3h
+  receiver: "email-notifications"
+
+receivers:
+  - name: "email-notifications"
+    email_configs:
+      - to: "devops-team@example.com"
+        from: "alertmanager@example.com"
+        smarthost: "smtp.example.com:587"
+        auth_username: "alertmanager@example.com"
+        auth_password: "<SMTP_PASSWORD>"
+
+  - name: "slack-notifications"
+    slack_configs:
+      - api_url: "<SLACK_WEBHOOK_URL>"
+        channel: "#devops-alerts"
+        title: "{{ .CommonAnnotations.summary }}"
+        text: "{{ .CommonAnnotations.description }}"

@@ -1,0 +1,69 @@
+# =============================================================================
+# Ansible Playbook - Setup Jenkins Server
+# =============================================================================
+---
+- name: Setup Jenkins Server
+  hosts: jenkins
+  become: true
+
+  tasks:
+    - name: Install Java 17
+      apt:
+        name: fontconfig, openjdk-17-jre
+        state: present
+        update_cache: yes
+
+    - name: Add Jenkins GPG key
+      shell: >
+        curl -fsSL https://pkg.jenkins.io/debian/jenkins.io-2023.key |
+        tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+      args:
+        creates: /usr/share/keyrings/jenkins-keyring.asc
+
+    - name: Add Jenkins repository
+      shell: >
+        echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc]
+        https://pkg.jenkins.io/debian binary/" |
+        tee /etc/apt/sources.list.d/jenkins.list > /dev/null
+
+    - name: Install Jenkins
+      apt:
+        name: jenkins
+        state: present
+        update_cache: yes
+
+    - name: Start and enable Jenkins
+      systemd:
+        name: jenkins
+        state: started
+        enabled: yes
+
+    - name: Add Jenkins user to docker group
+      user:
+        name: jenkins
+        groups: docker
+        append: yes
+
+    - name: Install Trivy
+      shell: |
+        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+      args:
+        creates: /usr/local/bin/trivy
+
+    - name: Install kubectl
+      shell: |
+        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+        chmod +x kubectl
+        mv kubectl /usr/local/bin/
+      args:
+        creates: /usr/local/bin/kubectl
+
+    - name: Print Jenkins initial admin password
+      command: cat /var/lib/jenkins/secrets/initialAdminPassword
+      register: jenkins_password
+      ignore_errors: true
+
+    - name: Show Jenkins password
+      debug:
+        msg: "Jenkins Initial Password: {{ jenkins_password.stdout }}"
+      when: jenkins_password.rc == 0

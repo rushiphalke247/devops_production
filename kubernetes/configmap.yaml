@@ -1,0 +1,11 @@
+# =============================================================================
+# ConfigMap
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: devops-app
+data:
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "info"

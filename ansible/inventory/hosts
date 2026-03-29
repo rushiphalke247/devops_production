@@ -1,0 +1,19 @@
+# =============================================================================
+# Ansible Inventory (3 EC2 Servers)
+# =============================================================================
+# Update the IPs below with Terraform output values:
+#   terraform output jenkins_public_ip
+#   terraform output k8s_master_public_ip
+#   terraform output k8s_worker_public_ip
+
+[jenkins]
+jenkins-server ansible_host=<JENKINS_IP> ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/devops-key.pem
+
+[k8s_master]
+k8s-master ansible_host=<K8S_MASTER_IP> ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/devops-key.pem
+
+[k8s_worker]
+k8s-worker ansible_host=<K8S_WORKER_IP> ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/devops-key.pem
+
+[all:vars]
+ansible_python_interpreter=/usr/bin/python3

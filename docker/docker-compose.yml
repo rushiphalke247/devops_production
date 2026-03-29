@@ -1,0 +1,22 @@
+version: "3.8"
+
+services:
+  python-api:
+    build: ./python-api
+    container_name: python-api
+    ports:
+      - "5000:5000"
+    environment:
+      - ENVIRONMENT=development
+    restart: unless-stopped
+
+  node-frontend:
+    build: ./node-frontend
+    container_name: node-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - API_URL=http://python-api:5000
+    depends_on:
+      - python-api
+    restart: unless-stopped

@@ -1,0 +1,45 @@
+# =============================================================================
+# Ansible Playbook - Setup Monitoring (Prometheus + Grafana)
+# Runs on K8s Master node
+# =============================================================================
+---
+- name: Setup Monitoring Stack
+  hosts: k8s_master
+  become: true
+
+  tasks:
+    - name: Create monitoring directory
+      file:
+        path: /opt/monitoring
+        state: directory
+
+    - name: Copy Prometheus config
+      copy:
+        src: ../../monitoring/prometheus/prometheus.yml
+        dest: /opt/monitoring/prometheus.yml
+
+    - name: Copy alert rules
+      copy:
+        src: ../../monitoring/prometheus/alert-rules.yml
+        dest: /opt/monitoring/alert-rules.yml
+
+    - name: Run Prometheus container
+      shell: |
+        docker run -d --name prometheus --restart unless-stopped \
+          -p 9090:9090 \
+          -v /opt/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml \
+          -v /opt/monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml \
+          prom/prometheus:latest
+
+    - name: Run Grafana container
+      shell: |
+        docker run -d --name grafana --restart unless-stopped \
+          -p 3000:3000 \
+          -e GF_SECURITY_ADMIN_PASSWORD=admin123 \
+          grafana/grafana:latest
+
+    - name: Run Node Exporter
+      shell: |
+        docker run -d --name node-exporter --restart unless-stopped \
+          -p 9100:9100 \
+          prom/node-exporter:latest

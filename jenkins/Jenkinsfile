@@ -1,0 +1,95 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_HUB      = 'your-dockerhub-username'
+        K8S_MASTER_IP   = '<K8S_MASTER_IP>'
+        SONARQUBE_URL   = 'http://localhost:9000'
+    }
+
+    stages {
+        // Stage 1: Checkout Code from Git
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/<your-repo>/devops-project.git'
+            }
+        }
+
+        // Stage 2: SonarQube Code Quality Analysis
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('sonarqube-server') {
+                    sh '''
+                        sonar-scanner \
+                          -Dsonar.projectKey=devops-platform \
+                          -Dsonar.sources=./docker \
+                          -Dsonar.host.url=${SONARQUBE_URL}
+                    '''
+                }
+            }
+        }
+
+        // Stage 3: Trivy Security Scan
+        stage('Trivy Scan') {
+            steps {
+                sh '''
+                    trivy fs --severity HIGH,CRITICAL --format table ./docker/python-api
+                    trivy fs --severity HIGH,CRITICAL --format table ./docker/node-frontend
+                '''
+            }
+        }
+
+        // Stage 4: Build Docker Images
+        stage('Docker Build') {
+            steps {
+                sh '''
+                    docker build -t ${DOCKER_HUB}/python-api:${BUILD_NUMBER} ./docker/python-api
+                    docker build -t ${DOCKER_HUB}/node-frontend:${BUILD_NUMBER} ./docker/node-frontend
+                '''
+            }
+        }
+
+        // Stage 5: Push to Docker Hub
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                    sh '''
+                        echo $PASS | docker login -u $USER --password-stdin
+                        docker push ${DOCKER_HUB}/python-api:${BUILD_NUMBER}
+                        docker push ${DOCKER_HUB}/node-frontend:${BUILD_NUMBER}
+                    '''
+                }
+            }
+        }
+
+        // Stage 6: Deploy to Kubernetes (EC2 based cluster)
+        stage('Deploy to K8s') {
+            steps {
+                sshagent(['k8s-master-ssh']) {
+                    sh '''
+                        scp -o StrictHostKeyChecking=no kubernetes/*.yaml ubuntu@${K8S_MASTER_IP}:/tmp/
+                        ssh -o StrictHostKeyChecking=no ubuntu@${K8S_MASTER_IP} "
+                            kubectl apply -f /tmp/namespace.yaml
+                            kubectl apply -f /tmp/configmap.yaml
+                            kubectl apply -f /tmp/deployments.yaml
+                            kubectl apply -f /tmp/services.yaml
+                            kubectl apply -f /tmp/ingress.yaml
+                            kubectl apply -f /tmp/hpa.yaml
+                            kubectl set image deployment/python-api python-api=${DOCKER_HUB}/python-api:${BUILD_NUMBER} -n devops-app
+                            kubectl set image deployment/node-frontend node-frontend=${DOCKER_HUB}/node-frontend:${BUILD_NUMBER} -n devops-app
+                        "
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo '✅ Pipeline completed successfully!'
+        }
+        failure {
+            echo '❌ Pipeline failed. Check logs for details.'
+        }
+    }
+}

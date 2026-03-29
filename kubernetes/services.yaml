@@ -1,0 +1,32 @@
+# =============================================================================
+# Python API Service (ClusterIP - internal only)
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: python-api-svc
+  namespace: devops-app
+spec:
+  selector:
+    app: python-api
+  ports:
+    - port: 5000
+      targetPort: 5000
+  type: ClusterIP
+
+---
+# =============================================================================
+# Node Frontend Service (LoadBalancer - public)
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-frontend-svc
+  namespace: devops-app
+spec:
+  selector:
+    app: node-frontend
+  ports:
+    - port: 80
+      targetPort: 3000
+  type: LoadBalancer
