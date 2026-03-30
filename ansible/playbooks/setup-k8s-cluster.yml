@@ -54,6 +54,8 @@
         apt-get update
         apt-get install -y kubelet kubeadm kubectl
         apt-mark hold kubelet kubeadm kubectl
+      args:
+        creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
 
 # =============================================================================
 # Initialize Master Node
