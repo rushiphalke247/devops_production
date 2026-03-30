@@ -1,7 +1,5 @@
-# =============================================================================
 # Ansible Playbook - Setup Kubernetes Cluster (kubeadm)
 # Run on both master and worker nodes
-# =============================================================================
 ---
 - name: Setup Kubernetes Prerequisites (Master + Worker)
   hosts: k8s_master,k8s_worker
