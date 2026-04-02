@@ -1,0 +1,234 @@
+# Production DevOps Platform on AWS
+
+A complete DevOps platform featuring CI/CD pipelines with Jenkins, containerized microservices on a self-managed Kubernetes cluster (kubeadm), SonarQube code analysis, Trivy security scanning, and Prometheus + Grafana monitoring — all running on **3 EC2 instances**.
+
+## Architecture
+
+```
+                            ┌──────────────────────────────┐
+                            │        AWS VPC (10.0.0.0/16) │
+                            │                              │
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │                          Public Subnets                             │
+  │                                                                      │
+  │  ┌─────────────────────┐  ┌──────────────────┐  ┌────────────────┐  │
+  │  │  EC2: Jenkins Server │  │ EC2: K8s Master  │  │ EC2: K8s Worker│  │
+  │  │  (t2.large)         │  │ (t2.medium)      │  │ (t2.medium)    │  │
+  │  │                     │  │                  │  │                │  │
+  │  │  - Jenkins :8080    │  │  - Control Plane │  │  - Kubelet     │  │
+  │  │  - SonarQube :9000  │  │  - kubeadm       │  │  - Pods run    │  │
+  │  │  - Docker           │  │  - Flannel CNI   │  │    here        │  │
+  │  │  - Trivy            │  │  - Prometheus    │  │                │  │
+  │  │                     │  │  - Grafana       │  │                │  │
+  │  └────────┬────────────┘  └────────┬─────────┘  └───────┬────────┘  │
+  │           │                        │                     │           │
+  └───────────┼────────────────────────┼─────────────────────┼───────────┘
+              │                        │                     │
+              │          CI/CD Pipeline│  kubeadm join       │
+              │     ┌──────────────────┤◄────────────────────┘
+              │     │                  │
+              ▼     ▼                  ▼
+  ┌───────────────────────────────────────────────────────────────────────┐
+  │                      Internet Gateway                                │
+  └──────────────────────────────┬────────────────────────────────────────┘
+                                 │
+                              Users / Git
+```
+
+## CI/CD Pipeline Flow
+
+```
+Git Push → Jenkins → SonarQube Analysis → Trivy Scan → Docker Build → Docker Hub Push → SSH Deploy to K8s
+```
+
+## Project Structure
+
+```
+devops-project/
+├── terraform/                     # Infrastructure as Code (6 files)
+│   ├── provider.tf                # AWS provider config
+│   ├── variables.tf               # Input variables
+│   ├── vpc.tf                     # VPC, Subnets, IGW, NAT, Route Tables
+│   ├── security-groups.tf         # Jenkins+SonarQube SG, K8s SG
+│   ├── ec2.tf                     # 3 EC2: Jenkins, K8s Master, K8s Worker
+│   └── outputs.tf                 # IPs and URLs
+├── docker/                        # Containerized Microservices
+│   ├── python-api/                # Flask REST API
+│   │   ├── app.py
+│   │   ├── requirements.txt
+│   │   └── Dockerfile
+│   ├── node-frontend/             # Express.js Frontend
+│   │   ├── server.js
+│   │   ├── package.json
+│   │   └── Dockerfile
+│   └── docker-compose.yml         # Local dev stack
+├── kubernetes/                    # K8s Manifests
+│   ├── namespace.yaml
+│   ├── configmap.yaml
+│   ├── deployments.yaml           # 2 deployments with probes + rolling update
+│   ├── services.yaml              # ClusterIP + LoadBalancer
+│   ├── ingress.yaml               # NGINX path-based routing
+│   └── hpa.yaml                   # Auto-scaling (CPU 70%)
+├── jenkins/
+│   └── Jenkinsfile                # 6-stage CI/CD pipeline
+├── ansible/
+│   ├── inventory/hosts
+│   └── playbooks/
+│       ├── setup-docker.yml       # Docker on all nodes
+│       ├── setup-jenkins.yml      # Jenkins + Trivy + kubectl
+│       ├── setup-k8s-cluster.yml  # kubeadm init + join
+│       └── setup-monitoring.yml   # Prometheus + Grafana on master
+├── monitoring/
+│   ├── prometheus/
+│   │   ├── prometheus.yml         # Scrape configs
+│   │   └── alert-rules.yml        # CPU, memory, pod alerts
+│   ├── grafana/
+│   │   ├── datasource.yml         # Prometheus datasource provisioning
+│   │   ├── dashboard.yml          # Dashboard provisioning config (DevOps folder)
+│   │   └── dashboards/            # Pre-built Grafana dashboard JSONs
+│   │       ├── infrastructure-overview.json  # Node Exporter metrics
+│   │       ├── kubernetes-cluster.json       # K8s cluster monitoring
+│   │       └── jenkins-cicd.json             # Jenkins pipeline metrics
+│   └── alertmanager/
+│       └── alertmanager.yml       # Email/Slack routing
+├── scripts/setup.sh
+├── .gitignore
+└── README.md
+```
+
+## Tools & Technologies
+
+| Category                | Tools                                |
+|-------------------------|--------------------------------------|
+| Cloud                   | AWS (EC2, VPC)                       |
+| IaC                     | Terraform                            |
+| Containers              | Docker, Docker Compose               |
+| Orchestration           | Kubernetes (kubeadm on EC2)          |
+| CI/CD                   | Jenkins                              |
+| Code Quality            | SonarQube                            |
+| Security Scanning       | Trivy                                |
+| Config Management       | Ansible                              |
+| Monitoring              | Prometheus, Grafana, Alertmanager    |
+| OS                      | Linux (Ubuntu 22.04)                 |
+
+## EC2 Servers
+
+| Server             | Instance Type | Runs                                        |
+|--------------------|---------------|---------------------------------------------|
+| Jenkins Server     | t2.large      | Jenkins, SonarQube (Docker), Docker, Trivy  |
+| K8s Master         | t2.medium     | Control Plane, Prometheus, Grafana          |
+| K8s Worker         | t2.medium     | Worker Node (runs app pods)                 |
+
+## Grafana Dashboards
+
+Three pre-built dashboards auto-provisioned into the **DevOps** folder on startup:
+
+| Dashboard                  | UID               | Panels | Datasource  | Key Metrics                                                    |
+|----------------------------|--------------------|--------|-------------|----------------------------------------------------------------|
+| Infrastructure Overview    | `infra-overview`   | 12     | Prometheus  | CPU/Memory/Disk gauges, CPU modes, memory breakdown, disk I/O, network traffic & errors |
+| Kubernetes Cluster         | `k8s-cluster`      | 14     | Prometheus  | Pod count/status, restarts, container CPU/memory, deployment replicas, HPA scaling      |
+| Jenkins CI/CD              | `jenkins-cicd`     | 11     | Prometheus  | Jenkins up status, build counts by result, queue depth, executor utilization, JVM health |
+
+**Dashboard provisioning**: Dashboards are loaded from `/var/lib/grafana/dashboards` via the `dashboard.yml` provisioning config with 30s auto-refresh.
+
+## Getting Started
+
+### Prerequisites
+- AWS account with CLI configured
+- Terraform >= 1.5
+- Ansible installed locally
+- Docker Hub account
+
+### Step 1: Provision 3 EC2 Instances
+```bash
+cd terraform
+terraform init
+terraform plan
+terraform apply
+
+# Note the output IPs:
+# jenkins_public_ip, k8s_master_public_ip, k8s_worker_public_ip
+```
+
+### Step 2: Update Ansible Inventory
+```bash
+# Edit ansible/inventory/hosts — replace <JENKINS_IP>, <K8S_MASTER_IP>, <K8S_WORKER_IP>
+```
+
+### Step 3: Configure Servers with Ansible
+```bash
+cd ansible
+
+# Install Docker on all 3 servers
+ansible-playbook -i inventory/hosts playbooks/setup-docker.yml
+
+# Setup Jenkins + SonarQube + Trivy
+ansible-playbook -i inventory/hosts playbooks/setup-jenkins.yml
+
+# Setup Kubernetes cluster (master init + worker join)
+ansible-playbook -i inventory/hosts playbooks/setup-k8s-cluster.yml
+
+# Setup Prometheus + Grafana on master
+ansible-playbook -i inventory/hosts playbooks/setup-monitoring.yml
+```
+### Step 4: Test Locally with Docker Compose
+```bash
+cd docker
+docker-compose up -d
+# API:      http://localhost:5000
+# Frontend: http://localhost:3000
+```
+### Step 5: Deploy to Kubernetes
+```bash
+ssh -i ~/.ssh/devops-key.pem ubuntu@<K8S_MASTER_IP>
+kubectl apply -f kubernetes/
+kubectl get pods -n devops-app
+```
+### Step 6: Setup Jenkins Pipeline
+1. Open `http://<JENKINS_IP>:8080`
+2. Install plugins: SonarQube Scanner, Docker Pipeline, SSH Agent
+3. Add credentials: Docker Hub (username/password), K8s Master SSH key
+4. Create Pipeline job → point to `Jenkinsfile` in your Git repo
+
+### Step 7: Import Grafana Dashboards
+Dashboards auto-load on Grafana startup. If running manually:
+1. Open `http://<K8S_MASTER_IP>:3000` (admin / admin123)
+2. Go to **Dashboards → Import**
+3. Upload JSON files from `monitoring/grafana/dashboards/`
+
+## Service Access
+
+| Service        | URL                              | Credentials     |
+|----------------|----------------------------------|-----------------|
+| Jenkins        | `http://<JENKINS_IP>:8080`       | Initial from setup |
+| SonarQube      | `http://<JENKINS_IP>:9000`       | admin / admin   |
+| Prometheus     | `http://<K8S_MASTER_IP>:9090`    | —               |
+| Grafana        | `http://<K8S_MASTER_IP>:3000`    | admin / admin123|
+
+## Key Features
+
+- **3 EC2 instances** — Jenkins+SonarQube, K8s Master, K8s Worker
+- **CI/CD pipeline** — 6-stage Jenkins pipeline with quality gates
+- **Security scanning** — Trivy vulnerability scanning on every build
+- **Self-managed K8s** — kubeadm cluster with Flannel CNI
+- **Auto-scaling** — HPA scales pods at 70% CPU
+- **Zero-downtime** — Rolling updates with liveness/readiness probes
+- **Monitoring** — Prometheus + Grafana + Alertmanager
+- **Pre-built dashboards** — 3 Grafana dashboards (Infrastructure, K8s, Jenkins)
+- **Alerting** — CPU, memory, disk, pod restart alerts with Slack/email routing
+- **IaC** — Full infrastructure defined in Terraform
+- **Automation** — Ansible playbooks for complete server setup
+
+## Component Status
+
+| Component              | Status   | Files |
+|------------------------|----------|-------|
+| Terraform (IaC)        | Done     | 6     |
+| Docker Microservices   | Done     | 7     |
+| Kubernetes Manifests   | Done     | 6     |
+| Jenkins Pipeline       | Done     | 1     |
+| Ansible Playbooks      | Done     | 5     |
+| Prometheus Monitoring  | Done     | 2     |
+| Grafana Dashboards     | Done     | 5     |
+| Alertmanager           | Done     | 1     |
+| Scripts                | Done     | 1     |
